@@ -1,0 +1,193 @@
+
+#CHMS summary
+```{r}
+library(dplyr)
+library(httk)
+library(ggplot2)
+# Read dataset
+data <- read.csv("../httk gen pop/summary_CHMS.csv")
+
+colnames(data) <- c("X", "Race", "Sex", "Count", "Age_min", "Age_median", "Age_mean", "Age_max","Age_sd", 
+                    "Weight_min", "Weight_median", "Weight_mean", "Weight_max", "Weight_sd", 
+                    "Height_min", "Height_median", "Height_mean", "Height_max", "Height_sd", 
+                    "Hematocrit_min", "Hematocrit_median", "Hematocrit_mean", "Hematocrit_max","Hematocrit_sd", 
+                    "Creatine_min", "Creatine_median", "Creatine_mean", "Creatine_max","Creatine_sd")
+
+# Expand dataset by `Count`
+expanded_data <- data %>%
+  rowwise() %>%
+  do(data.frame(
+    Race = rep(.$Race, .$Count),
+    Sex = rep(.$Sex, .$Count),
+    Age = rnorm(.$Count, mean = .$Age_mean, sd = .$Age_sd),
+    Weight = rnorm(.$Count, mean = .$Weight_mean, sd = .$Weight_sd),
+    Height = rnorm(.$Count, mean = .$Height_mean, sd = .$Height_sd),
+    Hematocrit = rnorm(.$Count, mean = .$Hematocrit_mean, sd = .$Hematocrit_sd),
+    Creatinine = rnorm(.$Count, mean = .$Creatine_mean, sd = .$Creatine_sd)
+  ))
+
+# Convert height to meters
+expanded_data$Height_m <- expanded_data$Height / 100
+
+# Calculate BMI
+expanded_data$BMI <- expanded_data$Weight / (expanded_data$Height_m^2)
+
+# Assign weight category
+expanded_data$Weight_Category <- with(expanded_data, ifelse(BMI < 18.5, "Underweight", 
+                                      ifelse(BMI >= 18.5 & BMI < 25, "Normal", 
+                                      ifelse(BMI >= 25 & BMI < 30, "Overweight", "Obese"))))
+
+# Convert gender to expected format
+gender_counts <- table(expanded_data$Sex)
+gendernum <- as.list(setNames(as.numeric(gender_counts), names(gender_counts)))
+
+# Map CHMS race to NHANES-compatible categories
+expanded_data$Race <- as.character(expanded_data$Race)
+expanded_data$Race <- ifelse(expanded_data$Race == "White", "Non-Hispanic White", 
+                      ifelse(expanded_data$Race == "Black", "Non-Hispanic Black", 
+                      ifelse(expanded_data$Race == "Latin American", "Other Hispanic", "Other")))
+
+# Extract unique racial/ethnic groups
+reths <- unique(expanded_data$Race)
+
+# Compute estimated GFR using CKD-EPI formula
+expanded_data$GFR <- with(expanded_data, ifelse(Age >= 18, 
+    141 * (pmin(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ ifelse(Sex == "Female", -0.329, -0.411)) * 
+        (pmax(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ -1.209) * (0.993 ^ Age) * 
+        ifelse(Sex == "Female", 1.018, 1) * ifelse(Race == "Non-Hispanic Black", 1.159, 1),
+    (-6.1604 * (Height_m^2)) + (99.054 * Height_m) - 17.74))
+
+# Assign kidney function category
+expanded_data$GFR_Category <- with(expanded_data, ifelse(GFR >= 90, "Normal", 
+                                               ifelse(GFR >= 60, "Kidney Disease", "Kidney Failure")))
+
+# Determine age range
+agelim_years <- c(min(expanded_data$Age), max(expanded_data$Age))
+expanded_data <- na.omit(expanded_data)
+
+# Generate virtual population in HTTK
+mypop <- httkpop_generate(
+  method = 'virtual individuals',
+  gendernum = gendernum,
+  agelim_years = agelim_years,
+  reths = reths,
+  gfr_category = unique(expanded_data$GFR_Category),
+  weight_category = unique(expanded_data$Weight_Category)
+)
+
+# View first few rows
+head(mypop)
+
+```
+#NHANES summary
+```{r}
+# Read dataset
+data_nhanes <- read.csv("../httk gen pop/summary_NHANES.csv")
+
+colnames(data_nhanes) <- c("X", "Race", "Sex", "Count", "Age_min", "Age_median", "Age_mean", "Age_max","Age_sd", 
+                    "Weight_min", "Weight_median", "Weight_mean", "Weight_max", "Weight_sd", 
+                    "Height_min", "Height_median", "Height_mean", "Height_max", "Height_sd", 
+                    "Hematocrit_min", "Hematocrit_median", "Hematocrit_mean", "Hematocrit_max","Hematocrit_sd", 
+                    "Creatine_min", "Creatine_median", "Creatine_mean", "Creatine_max","Creatine_sd")
+
+# Expand dataset by `Count`
+expanded_data_nhanes <- data_nhanes %>%
+  rowwise() %>%
+  do(data.frame(
+    Race = rep(.$Race, .$Count),
+    Sex = rep(.$Sex, .$Count),
+    Age = rnorm(.$Count, mean = .$Age_mean, sd = .$Age_sd),
+    Weight = rnorm(.$Count, mean = .$Weight_mean, sd = .$Weight_sd),
+    Height = rnorm(.$Count, mean = .$Height_mean, sd = .$Height_sd),
+    Hematocrit = rnorm(.$Count, mean = .$Hematocrit_mean, sd = .$Hematocrit_sd),
+    Creatinine = rnorm(.$Count, mean = .$Creatine_mean, sd = .$Creatine_sd)
+  ))
+
+# Convert height to meters
+expanded_data_nhanes$Height_m <- expanded_data_nhanes$Height / 100
+
+# Calculate BMI
+expanded_data_nhanes$BMI <- expanded_data_nhanes$Weight / (expanded_data_nhanes$Height_m^2)
+
+# Assign weight category
+expanded_data_nhanes$Weight_Category <- with(expanded_data_nhanes, ifelse(BMI < 18.5, "Underweight", 
+                                      ifelse(BMI >= 18.5 & BMI < 25, "Normal", 
+                                      ifelse(BMI >= 25 & BMI < 30, "Overweight", "Obese"))))
+
+# Convert gender to expected format
+gender_counts <- table(expanded_data_nhanes$Sex)
+gendernum <- as.list(setNames(as.numeric(gender_counts), names(gender_counts)))
+
+# Map CHMS race to NHANES-compatible categories
+expanded_data_nhanes$Race <- as.character(expanded_data_nhanes$Race)
+
+# Extract unique racial/ethnic groups
+reths <- unique(expanded_data_nhanes$Race)
+
+# Compute estimated GFR using CKD-EPI formula
+expanded_data_nhanes$GFR <- with(expanded_data_nhanes, ifelse(Age >= 18, 
+    141 * (pmin(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ ifelse(Sex == "Female", -0.329, -0.411)) * 
+        (pmax(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ -1.209) * (0.993 ^ Age) * 
+        ifelse(Sex == "Female", 1.018, 1) * ifelse(Race == "Non-Hispanic Black", 1.159, 1),
+    (-6.1604 * (Height_m^2)) + (99.054 * Height_m) - 17.74))
+
+# Assign kidney function category
+expanded_data_nhanes$GFR_Category <- with(expanded_data_nhanes, ifelse(GFR >= 90, "Normal", 
+                                               ifelse(GFR >= 60, "Kidney Disease", "Kidney Failure")))
+
+# Determine age range
+agelim_years <- c(min(expanded_data_nhanes$Age), max(expanded_data_nhanes$Age))
+expanded_data_nhanes <- na.omit(expanded_data_nhanes)
+
+# Generate virtual population in HTTK
+nhanes_data <- httkpop_generate(
+  method = 'virtual individuals',
+  gendernum = gendernum,
+  agelim_years = agelim_years,
+  reths = reths,
+  gfr_category = unique(expanded_data_nhanes$GFR_Category),
+  weight_category = unique(expanded_data_nhanes$Weight_Category)
+)
+
+# View first few rows
+head(nhanes_data)
+
+```
+
+```{r}
+load("/Users/aloan/OneDrive - HC-SC PHAC-ASPC/Desktop/PFAS immunotox/invitrodb_3_5_mc5.Rdata")
+# Extract chemicals available in HTTK
+# Subsetting toxcast data for a specific chemical (DTXSID3021645)
+toxcast.httk <- subset(mc5, dsstox_substance_id %in% get_cheminfo(info="DTXSID", suppress.messages=TRUE))
+
+
+# Extract unique DTXSID for chemical
+unique_chems <- unique(toxcast.httk$dsstox_substance_id)
+
+# Loop through each chemical
+for (chem in unique_chems) {
+  # Subset data for current chemical
+  chems_of_interest <- toxcast.httk[toxcast.httk$dsstox_substance_id == chem,]
+  
+  # Generate 'ka' values for `mypop` (repeat to match number of rows in `mypop`)
+  mypop$ka <- rep(rnorm(100, mean = chems_of_interest$max_mean, sd = 0.1), length.out = nrow(mypop))
+  
+  # Generate 'ka' values for `nhanes_data` (repeat to match number of rows in `nhanes_data`)
+  nhanes_data$ka <- rep(rnorm(100, mean = chems_of_interest$max_mean, sd = 0.1), length.out = nrow(nhanes_data))
+  
+  # Plot the density of 'ka' for both populations (mypop and nhanes_data) for the current chemical
+  p <- ggplot() +
+    geom_density(data = mypop, aes(x = ka), fill = "blue", alpha = 0.5, color = "blue") +  # Blue for mypop
+    geom_density(data = nhanes_data, aes(x = ka), fill = "red", alpha = 0.5, color = "red") +  # Red for NHANES
+    labs(title = paste("Comparison of Absorption Rate (ka) for Chemical", chem),
+         x = "Absorption Rate (ka)",
+         y = "Density") +
+    theme_minimal()
+  
+  # Print the plot
+  print(p)
+}
+
+
+```
+
