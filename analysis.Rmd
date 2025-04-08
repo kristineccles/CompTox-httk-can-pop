@@ -1,107 +1,30 @@
-
-#CHMS summary
+#Load Packages
 ```{r}
-library(dplyr)
 library(httk)
-library(ggplot2)
-# Read dataset
-data <- read.csv("../httk gen pop/summary_CHMS.csv")
-
-colnames(data) <- c("X", "Race", "Sex", "Count", "Age_min", "Age_median", "Age_mean", "Age_max","Age_sd", 
-                    "Weight_min", "Weight_median", "Weight_mean", "Weight_max", "Weight_sd", 
-                    "Height_min", "Height_median", "Height_mean", "Height_max", "Height_sd", 
-                    "Hematocrit_min", "Hematocrit_median", "Hematocrit_mean", "Hematocrit_max","Hematocrit_sd", 
-                    "Creatine_min", "Creatine_median", "Creatine_mean", "Creatine_max","Creatine_sd")
-
-# Expand dataset by `Count`
-expanded_data <- data %>%
-  rowwise() %>%
-  do(data.frame(
-    Race = rep(.$Race, .$Count),
-    Sex = rep(.$Sex, .$Count),
-    Age = rnorm(.$Count, mean = .$Age_mean, sd = .$Age_sd),
-    Weight = rnorm(.$Count, mean = .$Weight_mean, sd = .$Weight_sd),
-    Height = rnorm(.$Count, mean = .$Height_mean, sd = .$Height_sd),
-    Hematocrit = rnorm(.$Count, mean = .$Hematocrit_mean, sd = .$Hematocrit_sd),
-    Creatinine = rnorm(.$Count, mean = .$Creatine_mean, sd = .$Creatine_sd)
-  ))
-
-# Convert height to meters
-expanded_data$Height_m <- expanded_data$Height / 100
-
-# Calculate BMI
-expanded_data$BMI <- expanded_data$Weight / (expanded_data$Height_m^2)
-
-# Assign weight category
-expanded_data$Weight_Category <- with(expanded_data, ifelse(BMI < 18.5, "Underweight", 
-                                      ifelse(BMI >= 18.5 & BMI < 25, "Normal", 
-                                      ifelse(BMI >= 25 & BMI < 30, "Overweight", "Obese"))))
-
-# Convert gender to expected format
-gender_counts <- table(expanded_data$Sex)
-gendernum <- as.list(setNames(as.numeric(gender_counts), names(gender_counts)))
-
-# Map CHMS race to NHANES-compatible categories
-expanded_data$Race <- as.character(expanded_data$Race)
-expanded_data$Race <- ifelse(expanded_data$Race == "White", "Non-Hispanic White", 
-                      ifelse(expanded_data$Race == "Black", "Non-Hispanic Black", 
-                      ifelse(expanded_data$Race == "Latin American", "Other Hispanic", "Other")))
-
-# Extract unique racial/ethnic groups
-reths <- unique(expanded_data$Race)
-
-# Compute estimated GFR using CKD-EPI formula
-expanded_data$GFR <- with(expanded_data, ifelse(Age >= 18, 
-    141 * (pmin(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ ifelse(Sex == "Female", -0.329, -0.411)) * 
-        (pmax(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ -1.209) * (0.993 ^ Age) * 
-        ifelse(Sex == "Female", 1.018, 1) * ifelse(Race == "Non-Hispanic Black", 1.159, 1),
-    (-6.1604 * (Height_m^2)) + (99.054 * Height_m) - 17.74))
-
-# Assign kidney function category
-expanded_data$GFR_Category <- with(expanded_data, ifelse(GFR >= 90, "Normal", 
-                                               ifelse(GFR >= 60, "Kidney Disease", "Kidney Failure")))
-
-# Determine age range
-agelim_years <- c(min(expanded_data$Age), max(expanded_data$Age))
-expanded_data <- na.omit(expanded_data)
-
-# Generate virtual population in HTTK
-mypop <- httkpop_generate(
-  method = 'virtual individuals',
-  gendernum = gendernum,
-  agelim_years = agelim_years,
-  reths = reths,
-  gfr_category = unique(expanded_data$GFR_Category),
-  weight_category = unique(expanded_data$Weight_Category)
-)
-
-# View first few rows
-head(mypop)
-
+library(truncnorm)
+library(dplyr)
+library(ggimage)
+library(rsvg)
 ```
-#NHANES summary
+
+#CHMS in NHANES summary
 ```{r}
 # Read dataset
-data_nhanes <- read.csv("../httk gen pop/summary_NHANES.csv")
-
-colnames(data_nhanes) <- c("X", "Race", "Sex", "Count", "Age_min", "Age_median", "Age_mean", "Age_max","Age_sd", 
-                    "Weight_min", "Weight_median", "Weight_mean", "Weight_max", "Weight_sd", 
-                    "Height_min", "Height_median", "Height_mean", "Height_max", "Height_sd", 
-                    "Hematocrit_min", "Hematocrit_median", "Hematocrit_mean", "Hematocrit_max","Hematocrit_sd", 
-                    "Creatine_min", "Creatine_median", "Creatine_mean", "Creatine_max","Creatine_sd")
+data_nhanes <- read.csv("../CompTox-httk-can-pop/summary_NHANES.csv")
 
 # Expand dataset by `Count`
 expanded_data_nhanes <- data_nhanes %>%
   rowwise() %>%
   do(data.frame(
-    Race = rep(.$Race, .$Count),
+    Race = rep(.$NHANES_Race, .$Count),
     Sex = rep(.$Sex, .$Count),
-    Age = rnorm(.$Count, mean = .$Age_mean, sd = .$Age_sd),
-    Weight = rnorm(.$Count, mean = .$Weight_mean, sd = .$Weight_sd),
-    Height = rnorm(.$Count, mean = .$Height_mean, sd = .$Height_sd),
-    Hematocrit = rnorm(.$Count, mean = .$Hematocrit_mean, sd = .$Hematocrit_sd),
-    Creatinine = rnorm(.$Count, mean = .$Creatine_mean, sd = .$Creatine_sd)
-  ))
+    Age = rtruncnorm(.$Count, a = data_nhanes$DHH_AGE_Min, b = data_nhanes$DHH_AGE_Max, mean = .$DHH_AGE_Mean, sd = .$DHH_AGE_SD),
+    Weight = rtruncnorm(.$Count, a = data_nhanes$HWM_13KG_Min, b = data_nhanes$HWM_13KG_Max, mean = .$HWM_13KG_Mean, sd = .$HWM_13KG_SD),
+    Height = rtruncnorm(.$Count, a = data_nhanes$HWM_11CM_Min,b = data_nhanes$HWM_11CM_Max, mean = .$HWM_11CM_Mean, sd = .$HWM_11CM_SD),
+    Hematocrit = rtruncnorm(.$Count, a = data_nhanes$CBC_HCT_Min, b = data_nhanes$CBC_HCT_Max, mean = .$CBC_HCT_Mean, sd = .$CBC_HCT_SD),
+    Creatinine = rtruncnorm(.$Count, a = data_nhanes$LAB_BCRE_Min, b = data_nhanes$LAB_BCRE_Max, mean = .$LAB_BCRE_Mean, sd = .$LAB_BCRE_SD)
+  )) %>%
+  ungroup()
 
 # Convert height to meters
 expanded_data_nhanes$Height_m <- expanded_data_nhanes$Height / 100
@@ -125,15 +48,29 @@ expanded_data_nhanes$Race <- as.character(expanded_data_nhanes$Race)
 reths <- unique(expanded_data_nhanes$Race)
 
 # Compute estimated GFR using CKD-EPI formula
-expanded_data_nhanes$GFR <- with(expanded_data_nhanes, ifelse(Age >= 18, 
-    141 * (pmin(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ ifelse(Sex == "Female", -0.329, -0.411)) * 
-        (pmax(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ -1.209) * (0.993 ^ Age) * 
-        ifelse(Sex == "Female", 1.018, 1) * ifelse(Race == "Non-Hispanic Black", 1.159, 1),
-    (-6.1604 * (Height_m^2)) + (99.054 * Height_m) - 17.74))
+expanded_data_nhanes$GFR <- with(expanded_data_nhanes,
+  ifelse(Age >= 18,
+         141 *
+         (pmin(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ ifelse(Sex == "Female", -0.329, -0.411)) *
+         (pmax(Creatinine / ifelse(Sex == "Female", 0.7, 0.9), 1) ^ -1.209) *
+         (0.993 ^ Age) *
+         ifelse(Sex == "Female", 1.018, 1),
+         
+         # Pediatric Schwartz
+         (-6.1604 * (Height_m^2)) + (99.054 * Height_m) - 17.74
+  )
+)
 
-# Assign kidney function category
-expanded_data_nhanes$GFR_Category <- with(expanded_data_nhanes, ifelse(GFR >= 90, "Normal", 
-                                               ifelse(GFR >= 60, "Kidney Disease", "Kidney Failure")))
+##idk if this is right cannot find ebtter
+# Assign "Normal" for GFR > 60
+expanded_data_nhanes$GFR_Category <- ifelse(expanded_data_nhanes$GFR > 60, "Normal", NA)
+
+# Assign "Kidney Disease" for GFR between 16 and 59
+expanded_data_nhanes$GFR_Category <- ifelse(expanded_data_nhanes$GFR <= 59 & expanded_data_nhanes$GFR >= 16, "Kidney Disease", expanded_data_nhanes$GFR_Category)
+
+# Assign "Kidney Failure" for GFR ≤ 15
+expanded_data_nhanes$GFR_Category <- ifelse(expanded_data_nhanes$GFR <= 15, "Kidney Failure", expanded_data_nhanes$GFR_Category)
+
 
 # Determine age range
 agelim_years <- c(min(expanded_data_nhanes$Age), max(expanded_data_nhanes$Age))
@@ -153,41 +90,148 @@ nhanes_data <- httkpop_generate(
 head(nhanes_data)
 
 ```
-
+#NHANES
 ```{r}
 load("/Users/aloan/OneDrive - HC-SC PHAC-ASPC/Desktop/PFAS immunotox/invitrodb_3_5_mc5.Rdata")
-# Extract chemicals available in HTTK
-# Subsetting toxcast data for a specific chemical (DTXSID3021645)
 toxcast.httk <- subset(mc5, dsstox_substance_id %in% get_cheminfo(info="DTXSID", suppress.messages=TRUE))
 
+my.chems <- unique(mc5$dsstox_substance_id)
 
-# Extract unique DTXSID for chemical
-unique_chems <- unique(toxcast.httk$dsstox_substance_id)
-
-# Loop through each chemical
-for (chem in unique_chems) {
-  # Subset data for current chemical
-  chems_of_interest <- toxcast.httk[toxcast.httk$dsstox_substance_id == chem,]
-  
-  # Generate 'ka' values for `mypop` (repeat to match number of rows in `mypop`)
-  mypop$ka <- rep(rnorm(100, mean = chems_of_interest$max_mean, sd = 0.1), length.out = nrow(mypop))
-  
-  # Generate 'ka' values for `nhanes_data` (repeat to match number of rows in `nhanes_data`)
-  nhanes_data$ka <- rep(rnorm(100, mean = chems_of_interest$max_mean, sd = 0.1), length.out = nrow(nhanes_data))
-  
-  # Plot the density of 'ka' for both populations (mypop and nhanes_data) for the current chemical
-  p <- ggplot() +
-    geom_density(data = mypop, aes(x = ka), fill = "blue", alpha = 0.5, color = "blue") +  # Blue for mypop
-    geom_density(data = nhanes_data, aes(x = ka), fill = "red", alpha = 0.5, color = "red") +  # Red for NHANES
-    labs(title = paste("Comparison of Absorption Rate (ka) for Chemical", chem),
-         x = "Absorption Rate (ka)",
-         y = "Density") +
-    theme_minimal()
-  
-  # Print the plot
-  print(p)
+example.toxcast <- as.data.frame(mc5[mc5$dsstox_substance_id %in% my.chems,])
+toxcast.table <- NULL
+for (this.id in unique(example.toxcast$dsstox_substance_id))
+{
+  this.subset <- subset(example.toxcast, dsstox_substance_id == this.id)
+  these.hits <- subset(this.subset, hitc==1)
+  if (dim(these.hits)[1]>0){
+      this.row <- data.frame(Compound=as.character(this.subset[1,"chnm"]),
+                         DTXSID=this.id,
+                         Total.Assays = dim(this.subset)[1],
+                         Unique.Assays = length(unique(this.subset$aeid)),
+                         Total.Hits = dim(these.hits)[1],
+                         Unique.Hits = length(unique(these.hits$aeid)),
+                         Low.AC50 = signif(min(these.hits$modl_ga),3),
+                         Low.AC10 = signif(min(these.hits$modl_ac10),3),
+                         Low.ACC = signif(min(these.hits$modl_acc),3),
+                         Q10.AC50 = signif(quantile(these.hits$modl_ga,probs=0.1),3),
+                         Q10.AC10 = signif(quantile(these.hits$modl_ac10,probs=0.1),3),
+                         Q10.ACC = signif(quantile(these.hits$modl_acc,probs=0.1),3),
+                         Med.AC50 = signif(median(these.hits$modl_ga),3),
+                         Med.AC10 = signif(median(these.hits$modl_ac10),3),
+                         Med.ACC = signif(median(these.hits$modl_acc),3),
+                         Q90.AC50 = signif(quantile(these.hits$modl_ga,probs=0.9),3),
+                         Q90.AC10 = signif(quantile(these.hits$modl_ac10,probs=0.9),3),
+                         Q90.ACC = signif(quantile(these.hits$modl_acc,probs=0.9),3)
+                         )
+    toxcast.table <- rbind(toxcast.table, this.row)
+  }
 }
-
+rownames(toxcast.table) <- seq(1,dim(toxcast.table)[1])
+knitr::kable(head(toxcast.table[,1:6]), caption = "Summarized ToxCast Data",
+             floating.environment="sidewaystable")
+for (this.id in unique(toxcast.table$DTXSID))
+{
+# get_cheminfo() gives a list of all the CAS numbers for which HTTK will work:
+  if (this.id %in% get_cheminfo(info="dtxsid", suppress.messages=TRUE))
+  {
+# Set a random number generator seed so that the Monte Carlo will always give
+# the same random sequence:
+    set.seed(12345)
+    toxcast.table[toxcast.table$DTXSID==this.id,"Css"] <- 
+      calc_mc_css(dtxsid=this.id,
+                  output.units="uM",
+                  samples=5528,
+                  suppress.messages=TRUE)
+    toxcast.table[toxcast.table$DTXSID==this.id,"Css.Type"] <- "in vitro"
+  }
+}
+knitr::kable(toxcast.table[1:10,c("Compound","Q10.AC50","Css","Css.Type")], 
+                                caption = "Summarized ToxCast Data",
+             floating.environment="sidewaystable")
+NHANES <- toxcast.table
+saveRDS(NHANES, file = "../CompTox-httk-can-pop/NHANES_toxcast.rds")
+NHANES <- readRDS(../CompTox-httk-can-pop/"NHANES_toxcast.rds")
 
 ```
+#compare to NHANES
+```{r}
+for (this.id in unique(toxcast.table$DTXSID)) {
+  # get_cheminfo() gives a list of all the CAS numbers for which HTTK will work:
+  if (this.id %in% get_cheminfo(info="dtxsid", suppress.messages=TRUE)) {
+    
+    # Set a random number generator seed so that the Monte Carlo will always give
+    # the same random sequence:
+    set.seed(12345)
+    
+    # Generate Css for this chemical
+    toxcast.table[toxcast.table$DTXSID == this.id, "Css"] <- 
+      calc_mc_css(
+        dtxsid = this.id,
+        output.units = "uM",
+        samples = 5528,
+        suppress.messages = TRUE,
+        httkpop.generate.arg.list  = list(
+          method = 'virtual individuals',
+          gendernum = gendernum,
+          agelim_years = agelim_years,
+          reths = reths,
+          gfr_category = unique(expanded_data_nhanes$GFR_Category),
+          weight_category = unique(expanded_data_nhanes$Weight_Category)
+        )
+      )
+    
+    # Add Css type to the table
+    toxcast.table[toxcast.table$DTXSID == this.id, "Css.Type"] <- "in vitro"
+  }
+}
+
+knitr::kable(toxcast.table[1:10,c("Compound","Q10.AC50","Css","Css.Type")], 
+                                caption = "Summarized ToxCast Data",
+             floating.environment="sidewaystable")
+CHMS <- toxcast.table
+saveRDS(CHMS, file = "../CompTox-httk-can-pop/CHMS_toxcast.rds")
+CHMS <- readRDS(../CompTox-httk-can-pop/"CHMS_toxcast.rds")
+
+```
+```{r}
+CHMS$Population <- "CHMS"
+NHANES$Population <- "NHANES"
+
+# Keep only the relevant columns
+chms_sub <- CHMS %>% select(Compound, DTXSID, Css, Population)
+nhanes_sub <- NHANES %>% select(Compound, DTXSID, Css, Population)
+
+# Combine the two datasets
+combined_css <- bind_rows(chms_sub, nhanes_sub)
+
+# Remove rows with missing Css
+combined_css <- combined_css %>% filter(!is.na(Css))
+
+# Then, remove DTXSIDs where Css is negative in either population
+bad_dtxsids <- combined_css %>%
+  filter(Css < 0) %>%
+  pull(DTXSID) %>%
+  unique()
+
+# Filter out those DTXSIDs entirely from the dataset
+combined_css <- combined_css %>% filter(!DTXSID %in% bad_dtxsids)
+
+# Optional: shorten compound names for clarity
+combined_css$Compound <- factor(combined_css$Compound, 
+                                levels = unique(combined_css$Compound[order(combined_css$Css)]))
+
+
+ggplot(combined_css, aes(x = Css, y = Compound)) +
+  geom_image(aes(color =Population), size = 0.05) +  # adjust size as needed
+  scale_x_log10() +
+  labs(title = "Css Comparison: CHMS vs NHANES",
+       x = "Css (uM, log scale)",
+       y = "Compound") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 8))
+
+```
+#sensitivity test
+
+#seem3 exposure
 
