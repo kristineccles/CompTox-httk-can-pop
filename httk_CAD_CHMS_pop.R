@@ -1,5 +1,5 @@
 #######################################################
-# Extra distrubitions of parameters for httk
+# CHMS distributions of parameters for httk
 # By: Kristin Eccles
 # Date Updated: April 2nd, 2025
 #######################################################
@@ -11,6 +11,8 @@ library(haven)
 library(tidyverse)
 library(dplyr)
 library(purrr)
+library(ggplot2)
+library(ggpubr)
 
 #######################################################
 #### Cycle 6 Data ####
@@ -28,7 +30,7 @@ list_of_files <- list.files(path = "D:/HDAD_ADDS/Statistics-Canada/CHMS/Cycle 6 
 # Measured Height(cm): HWM_11CM
 
 # Non-Environmental Lab Data (NEL_FULL)
-# Creatine LAB_UCRE
+# Creatine LAB_BCRE
 # Hemocrit CBC_HCT
 
 # Household Full Sample (HHD_FULL)
@@ -42,7 +44,7 @@ df_data <- list_of_files[c(9, 15,18),] %>%
 
 # Define the columns to keep
 columns_to_keep <- c("CLINICID", "DHH_AGE", "DHH_SEX", "HWM_13KG",  
-                     "PGDCGT", "HWM_11", "CBC_HCT", "LAB_UCRE")
+                     "PGDCGT", "HWM_11", "CBC_HCT", "LAB_BCRE")
 
 df_list <- df_data %>%
   split(df_data$file_name) %>%
@@ -51,14 +53,18 @@ df_list <- df_data %>%
 final_data <- reduce(df_list, left_join, by = "CLINICID")
 
 #subset to only variables needed
-df_data_subset <- final_data[,c("CLINICID", "DHH_AGE", "DHH_SEX", "HWM_13KG",  "PGDCGT", "HWM_11CM", "CBC_HCT", "LAB_UCRE")]
+df_data_subset <- final_data[,c("CLINICID", "DHH_AGE", "DHH_SEX", "HWM_13KG",  "PGDCGT", "HWM_11CM", "CBC_HCT", "LAB_BCRE")]
 
 # remove missing values
 df_cleaned <- df_data_subset %>%
   mutate(across(where(is.numeric), ~ na_if(.x, 999.99)))%>%
+  mutate(across(where(is.numeric), ~ na_if(.x, 9996)))%>%
+  mutate(across(where(is.numeric), ~ na_if(.x, 9999)))%>%
   mutate(across(where(is.numeric), ~ na_if(.x, 99.99)))%>%
   mutate(across(where(is.numeric), ~ na_if(.x, 9.999)))%>%
   mutate(across(where(is.numeric), ~ na_if(.x, 96)))%>%
+  mutate(across(where(is.numeric), ~ na_if(.x, 99.96)))%>%
+  mutate(across(where(is.numeric), ~ na_if(.x, 9.996)))%>%
   mutate(across(where(is.numeric), ~ na_if(.x, 99)))
 
 #convert numeric variables to text
@@ -95,7 +101,7 @@ summary_NHANES <- df_cleaned %>%
   group_by(NHANES_Race, Sex) %>%
   summarize(
     Count = n(),  # Count of rows per group
-    across(c(DHH_AGE, HWM_13KG, HWM_11CM, CBC_HCT, LAB_UCRE), list(
+    across(c(DHH_AGE, HWM_13KG, HWM_11CM, CBC_HCT, LAB_BCRE), list(
       Min = ~ min(.x, na.rm = TRUE), 
       Median = ~ median(.x, na.rm = TRUE), 
       Mean = ~ mean(.x, na.rm = TRUE), 
@@ -109,7 +115,7 @@ summary_CHMS <- df_cleaned %>%
   group_by(Race, Sex) %>%
   summarize(
     Count = n(),  # Count of rows per group
-    across(c(DHH_AGE, HWM_13KG, HWM_11CM, CBC_HCT, LAB_UCRE), list(
+    across(c(DHH_AGE, HWM_13KG, HWM_11CM, CBC_HCT, LAB_BCRE), list(
       Min = ~ min(.x, na.rm = TRUE), 
       Median = ~ median(.x, na.rm = TRUE), 
       Mean = ~ mean(.x, na.rm = TRUE), 
@@ -119,27 +125,64 @@ summary_CHMS <- df_cleaned %>%
   )
 write.csv(summary_CHMS, "summary_CHMS.csv")
 
-# Create faceted pie chart
-ggplot(summary_CHMS, aes(x = "", y = Count, fill = Race)) +
-  geom_bar(stat = "identity", width = 1) +  # Creates bar for each category
-  coord_polar(theta = "y") +  # Converts bar chart into a pie chart
-  facet_wrap(~ Sex) +  # Facet by Race
-  theme_minimal() +  # Apply minimal theme
-  labs(title = "Percentage Distribution by Race", y = "Percentage", x = NULL) +
-  theme(axis.text.x = element_blank(),  # Remove x-axis labels
-        axis.ticks = element_blank(),
-        panel.grid = element_blank()) + 
-  scale_fill_brewer(palette = "Set3") 
+################################################################################
+#### Pie Plot ####
 
 # Create faceted pie chart
-ggplot(summary_NHANES, aes(x = "", y = Count, fill = Race_NHANES)) +
+pie_CHMS <- ggplot(summary_CHMS, aes(x = "", y = Count, fill = Race)) +
   geom_bar(stat = "identity", width = 1) +  # Creates bar for each category
   coord_polar(theta = "y") +  # Converts bar chart into a pie chart
   facet_wrap(~ Sex) +  # Facet by Race
   theme_minimal() +  # Apply minimal theme
-  labs(title = "Percentage Distribution by Race", y = "Percentage", x = NULL) +
+  labs(title = "CHMS Race", y = "Percentage", x = NULL) +
   theme(axis.text.x = element_blank(),  # Remove x-axis labels
         axis.ticks = element_blank(),
-        panel.grid = element_blank()) + 
-  scale_fill_brewer(palette = "Set3") 
-                           
+        panel.grid = element_blank()) 
+
+pie_NHANES <-ggplot(summary_NHANES, aes(x = "", y = Count, fill = NHANES_Race)) +
+  geom_bar(stat = "identity", width = 1) +  # Creates bar for each category
+  coord_polar(theta = "y") +  # Converts bar chart into a pie chart
+  facet_wrap(~ Sex) +  # Facet by Race
+  theme_minimal() +  # Apply minimal theme
+  labs(title = "CHMS Recoded to NHANES Race", y = "Percentage", x = NULL, fill = "Race" ) +
+  theme(axis.text.x = element_blank(),  # Remove x-axis labels
+        axis.ticks = element_blank(),
+        panel.grid = element_blank())
+
+pie_combined <- ggarrange(pie_CHMS, pie_NHANES,
+                                ncol = 2,
+                                labels = "AUTO",
+                                common.legend = FALSE,
+                                legend = "bottom")
+pie_combined
+
+ggsave("Pie_plots.jpg", pie_combined,  height =8, width =14)
+
+################################################################################
+#### Histograms ####
+hist_hemocrit <- ggplot(df_cleaned, aes(x = CBC_HCT, fill = Sex)) +
+  geom_histogram(alpha = 0.6, position = "identity") +
+  facet_wrap(Sex~ NHANES_Race, scales = "free", nrow = 2, ncol = 4) +
+  labs(x = "Whole Blood Hematocrit (L/L)",
+       y = "Count") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1")
+hist_hemocrit                      
+
+hist_creatinine <- ggplot(df_cleaned, aes(x = LAB_BCRE, fill = Sex)) +
+  geom_histogram(alpha = 0.6, position = "identity") +
+  facet_wrap(Sex~ NHANES_Race, scales = "free", nrow = 2, ncol = 4) +
+  labs(x = "Serum Creatinine (µmol/L)",
+       y = "Count") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1")
+hist_creatinine   
+
+hist_combined <- ggarrange(hist_hemocrit, hist_creatinine,
+                          nrow = 2,
+                          labels = "AUTO",
+                          common.legend = TRUE,
+                          legend = "bottom")
+hist_combined
+
+ggsave("hist_plots.jpg", hist_combined,  height =10, width =14)
